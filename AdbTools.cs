@@ -51,7 +51,7 @@ internal static class AdbTools
 
     public static async Task<AdbConnectionStatus> QueryConnectionStatusAsync(string adbPath)
     {
-        var server = TcpTable.TryFindListeningProcessId(5037) is null ? "Not running" : "Running";
+        var server = await EnsureServerRunningAsync(adbPath) ? "Running" : "Start failed";
         var devices = await ProcessRunner.RunAsync(adbPath, TimeSpan.FromSeconds(5), "devices", "-l");
         if (devices.ExitCode != 0)
         {
@@ -85,8 +85,24 @@ internal static class AdbTools
         return new AdbConnectionStatus(server, $"{device.Serial} (connected)", modelText, ip, battery);
     }
 
+    public static async Task<bool> EnsureServerRunningAsync(string adbPath)
+    {
+        if (TcpTable.TryFindListeningProcessId(5037) is not null)
+        {
+            return true;
+        }
+
+        var result = await ProcessRunner.RunAsync(adbPath, TimeSpan.FromSeconds(10), "start-server");
+        return result.ExitCode == 0 && TcpTable.TryFindListeningProcessId(5037) is not null;
+    }
+
     public static async Task<string> CaptureScreenshotAsync(string adbPath)
     {
+        if (!await EnsureServerRunningAsync(adbPath))
+        {
+            throw new InvalidOperationException("ADB server failed to start.");
+        }
+
         Directory.CreateDirectory(ScreenshotDirectory);
         var previousLatest = await TryGetLatestDeviceFileAsync(adbPath, QuestScreenshotDirectory);
 

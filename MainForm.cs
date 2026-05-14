@@ -321,20 +321,14 @@ internal sealed class MainForm : Form
         SetButtonsEnabled(false);
         try
         {
-            if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
+            if (!await EnsureAdbReadyAsync())
             {
-                await RefreshAdbAsync();
-            }
-
-            if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
-            {
-                Log("adb was not found. Start Unity Android Logcat or install Android SDK platform-tools.");
                 return;
             }
 
             Log($"> {label}: adb {string.Join(' ', arguments)}");
 
-            var result = await ProcessRunner.RunAsync(adbPath, arguments);
+            var result = await ProcessRunner.RunAsync(adbPath!, arguments);
             foreach (var line in TextOutput.SplitLines(result.Output))
             {
                 Log(line);
@@ -380,7 +374,7 @@ internal sealed class MainForm : Form
 
         try
         {
-            SetAdbStatusText(TcpTable.TryFindListeningProcessId(5037) is null ? "Starting/checking" : "Running", "Checking...", "-", "-", "-");
+            SetAdbStatusText(TcpTable.TryFindListeningProcessId(5037) is null ? "Starting" : "Running", "Checking...", "-", "-", "-");
             var status = await AdbTools.QueryConnectionStatusAsync(adbPath);
             SetAdbStatusText(status.Server, status.Device, status.Model, status.Ip, status.Battery);
         }
@@ -396,19 +390,13 @@ internal sealed class MainForm : Form
         SetButtonsEnabled(false);
         try
         {
-            if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
+            if (!await EnsureAdbReadyAsync())
             {
-                await RefreshAdbAsync();
-            }
-
-            if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
-            {
-                Log("adb was not found. Start Unity Android Logcat or install Android SDK platform-tools.");
                 return;
             }
 
             Log("> Screenshot: native Quest capture");
-            var path = await AdbTools.CaptureScreenshotAsync(adbPath);
+            var path = await AdbTools.CaptureScreenshotAsync(adbPath!);
             Log($"Screenshot saved: {path}");
             await RefreshAdbStatusAsync();
         }
@@ -432,6 +420,12 @@ internal sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
         {
             Log("adb was not found. Start Unity Android Logcat or install Android SDK platform-tools.");
+            return false;
+        }
+
+        if (!await AdbTools.EnsureServerRunningAsync(adbPath))
+        {
+            Log("ADB server failed to start.");
             return false;
         }
 
