@@ -6,6 +6,7 @@ A small Windows utility for VR development workflows.
 
 - Detects the currently running ADB server and uses that `adb.exe`.
 - Launches and stops the configured Android package through ADB.
+- Reboots the connected Meta Quest through ADB.
 - Launches the Meta Horizon Link desktop app.
 - Restarts `OVRService` without opening a PowerShell console.
 - Opens Oculus Debug Tool.

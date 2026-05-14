@@ -33,6 +33,7 @@ internal sealed class MainForm : Form
     private readonly Button refreshButton = new();
     private readonly Button connectButton = new();
     private readonly Button disconnectButton = new();
+    private readonly Button rebootQuestButton = new();
     private readonly Button devicesButton = new();
     private readonly Button debugToolButton = new();
     private readonly Button launchPcAppButton = new();
@@ -94,7 +95,7 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Height = 78,
+            Height = 116,
             Margin = new Padding(0, 10, 0, 0),
         };
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -105,7 +106,7 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Margin = new Padding(0),
         };
         buttonRow.Controls.Add(mainButtons, 0, 0);
@@ -187,6 +188,12 @@ internal sealed class MainForm : Form
         devicesButton.Click += async (_, _) => await RunAdbCommandAsync("Devices", "devices");
         mainButtons.Controls.Add(devicesButton);
 
+        rebootQuestButton.Text = "Reboot Quest";
+        rebootQuestButton.Width = 100;
+        rebootQuestButton.Height = 30;
+        rebootQuestButton.Click += async (_, _) => await RunAdbCommandAsync("Reboot Quest", "reboot");
+        mainButtons.Controls.Add(rebootQuestButton);
+
         debugToolButton.Text = "Debug Tool";
         debugToolButton.Width = 92;
         debugToolButton.Height = 30;
@@ -233,6 +240,7 @@ internal sealed class MainForm : Form
             "am",
             "force-stop",
             GetPackageName()));
+        menu.Items.Add("Reboot Quest", null, async (_, _) => await RunAdbCommandAsync("Reboot Quest", "reboot"));
         menu.Items.Add("Debug Tool", null, (_, _) => StartDebugTool());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Close());
@@ -319,6 +327,7 @@ internal sealed class MainForm : Form
         refreshButton.Enabled = enabled;
         connectButton.Enabled = enabled;
         disconnectButton.Enabled = enabled;
+        rebootQuestButton.Enabled = enabled;
         devicesButton.Enabled = enabled;
         debugToolButton.Enabled = enabled;
         launchPcAppButton.Enabled = enabled;
