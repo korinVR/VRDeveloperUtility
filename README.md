@@ -20,3 +20,19 @@ dotnet build .\VRDeveloperUtility.csproj -c Release
 ```powershell
 dotnet publish .\VRDeveloperUtility.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
 ```
+
+## MSI Installer
+
+Build a self-contained Windows MSI installer:
+
+```powershell
+.\scripts\build-installer.ps1
+```
+
+The MSI package is written to:
+
+```text
+dist\installer\VRDeveloperUtilitySetup.msi
+```
+
+The installer copies the app to `%LOCALAPPDATA%\Programs\VRDeveloperUtility`, creates a Start Menu shortcut, and registers an uninstall entry for the current user.

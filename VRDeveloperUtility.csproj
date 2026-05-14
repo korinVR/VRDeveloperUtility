@@ -10,4 +10,12 @@
     <Product>VR Developer Utility</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="installer\**\*.cs" />
+    <EmbeddedResource Remove="installer\**\*" />
+    <None Remove="installer\**\*" />
+    <None Include="installer\Product.wxs" />
+    <None Include="installer\VRDeveloperUtility.Installer.wixproj" />
+  </ItemGroup>
 </Project>

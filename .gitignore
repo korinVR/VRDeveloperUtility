@@ -1,6 +1,7 @@
 bin/
 obj/
 dist/
+installer/Resources/
 .vs/
 *.user
 *.suo
