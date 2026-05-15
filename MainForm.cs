@@ -15,39 +15,50 @@ internal sealed class MainForm : Form
     private readonly Label deviceModelLabel = new();
     private readonly Label deviceIpLabel = new();
     private readonly Label deviceBatteryLabel = new();
+    private readonly Label deviceSsidLabel = new();
+    private readonly BatteryBarPanel deviceBatteryBar = new();
+    private readonly Button logToggleButton = new();
     private readonly Button refreshButton = new();
     private readonly Button connectButton = new();
     private readonly Button disconnectButton = new();
     private readonly Button rebootQuestButton = new();
     private readonly Button screenshotButton = new();
-    private readonly Button devicesButton = new();
     private readonly Button debugToolButton = new();
     private readonly Button launchPcAppButton = new();
     private readonly Button restartServiceButton = new();
+    private readonly ComboBox unityProcessCombo = new();
+    private readonly Button refreshUnityButton = new();
+    private readonly Button killUnityButton = new();
+    private readonly System.Windows.Forms.Timer adbRefreshTimer = new();
     private readonly NotifyIcon notifyIcon = new();
 
     private string? adbPath;
+    private int? batteryLevel;
+    private RowStyle? logRowStyle;
+    private bool isRefreshingAdbStatus;
 
     public MainForm()
     {
         Text = "VR Developer Utility";
         Width = 860;
-        Height = 560;
-        MinimumSize = new Size(760, 500);
+        Height = 660;
+        MinimumSize = new Size(760, 600);
         StartPosition = FormStartPosition.CenterScreen;
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 6,
             Padding = new Padding(12),
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 124));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
+        logRowStyle = root.RowStyles[3];
         Controls.Add(root);
 
         root.Controls.Add(new Label
@@ -56,14 +67,14 @@ internal sealed class MainForm : Form
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 4),
-        });
+        }, 0, 0);
 
         adbPathText.Dock = DockStyle.Top;
         adbPathText.ReadOnly = true;
         adbPathText.Margin = new Padding(0, 0, 0, 8);
-        root.Controls.Add(adbPathText);
+        root.Controls.Add(adbPathText, 0, 1);
 
-        root.Controls.Add(BuildAdbStatusPanel());
+        root.Controls.Add(BuildAdbStatusPanel(), 0, 2);
 
         logBox.Dock = DockStyle.Fill;
         logBox.Multiline = true;
@@ -73,15 +84,23 @@ internal sealed class MainForm : Form
         logBox.BackColor = Color.White;
         logBox.ForeColor = Color.Black;
         logBox.Font = new Font("Consolas", 9);
-        root.Controls.Add(logBox);
+        logBox.Visible = false;
+        root.Controls.Add(logBox, 0, 3);
+        SetLogVisible(false);
 
-        root.Controls.Add(BuildButtonRow());
+        root.Controls.Add(BuildButtonRow(), 0, 4);
+
+        root.Controls.Add(BuildUnityPanel(), 0, 5);
 
         notifyIcon.Icon = SystemIcons.Application;
         notifyIcon.Text = "VR Developer Utility";
         notifyIcon.Visible = true;
         notifyIcon.DoubleClick += (_, _) => RestoreFromTray();
         notifyIcon.ContextMenuStrip = BuildTrayMenu();
+
+        adbRefreshTimer.Interval = 5000;
+        adbRefreshTimer.Tick += async (_, _) => await RefreshAdbStatusAsync();
+        adbRefreshTimer.Start();
 
         Resize += (_, _) =>
         {
@@ -91,8 +110,16 @@ internal sealed class MainForm : Form
             }
         };
 
-        FormClosing += (_, _) => notifyIcon.Visible = false;
-        Shown += async (_, _) => await RefreshAdbAsync();
+        FormClosing += (_, _) =>
+        {
+            adbRefreshTimer.Stop();
+            notifyIcon.Visible = false;
+        };
+        Shown += async (_, _) =>
+        {
+            await RefreshAdbAsync();
+            RefreshUnityProcesses();
+        };
     }
 
     private Control BuildAdbStatusPanel()
@@ -121,9 +148,12 @@ internal sealed class MainForm : Form
 
         AddStatusRow(grid, 0, "Server", adbServerStatusLabel, "Device", deviceStatusLabel);
         AddStatusRow(grid, 1, "Model", deviceModelLabel, "IP", deviceIpLabel);
-        AddStatusRow(grid, 2, "Battery", deviceBatteryLabel, string.Empty, new Label());
+        AddStatusCell(grid, "Battery", 2, 0, FontStyle.Bold);
+        AddStatusCell(grid, BuildBatteryBar(), 2, 1);
+        AddStatusCell(grid, "SSID", 2, 2, FontStyle.Bold);
+        AddStatusCell(grid, deviceSsidLabel, 2, 3);
 
-        SetAdbStatusText("Unknown", "Unknown", "-", "-", "-");
+        SetAdbStatusText("Unknown", "Unknown", "-", "-", "-", "-");
         return group;
     }
 
@@ -132,20 +162,25 @@ internal sealed class MainForm : Form
         var buttonRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            Height = 126,
+            ColumnCount = 1,
+            RowCount = 1,
+            Height = 112,
             Margin = new Padding(0, 10, 0, 0),
         };
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        buttonRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var mainButtons = new FlowLayoutPanel
+        var mainButtons = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
+            ColumnCount = 2,
+            RowCount = 2,
             Margin = new Padding(0),
         };
+        mainButtons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        mainButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        mainButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         buttonRow.Controls.Add(mainButtons, 0, 0);
 
         var pcAppGroup = new GroupBox
@@ -156,7 +191,8 @@ internal sealed class MainForm : Form
             Padding = new Padding(8, 4, 8, 6),
             Margin = new Padding(0, 0, 8, 0),
         };
-        mainButtons.Controls.Add(pcAppGroup);
+        mainButtons.Controls.Add(pcAppGroup, 0, 0);
+        mainButtons.SetColumnSpan(pcAppGroup, 2);
 
         var pcAppButtons = new FlowLayoutPanel
         {
@@ -185,22 +221,59 @@ internal sealed class MainForm : Form
             "force-stop",
             GetPackageName()));
 
-        var toolButtons = new FlowLayoutPanel
+        var actionButtons = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.RightToLeft,
+            FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Margin = new Padding(8, 0, 0, 0),
+            Margin = new Padding(0, 8, 0, 0),
         };
-        buttonRow.Controls.Add(toolButtons, 1, 0);
+        mainButtons.Controls.Add(actionButtons, 0, 1);
+        mainButtons.SetColumnSpan(actionButtons, 2);
 
-        AddButton(mainButtons, refreshButton, "Refresh", 78, async (_, _) => await RefreshAdbAsync());
-        AddButton(mainButtons, devicesButton, "Devices", 78, async (_, _) => await RunAdbCommandAsync("Devices", "devices"));
-        AddButton(mainButtons, screenshotButton, "Screenshot", 92, async (_, _) => await CaptureScreenshotAsync());
-        AddButton(mainButtons, rebootQuestButton, "Reboot Meta Quest", 156, async (_, _) => await RunAdbCommandAsync("Reboot Meta Quest", "reboot"));
-        AddButton(toolButtons, debugToolButton, "Oculus Debug Tool", 156, (_, _) => StartDebugTool());
+        AddButton(actionButtons, refreshButton, "Refresh", 78, async (_, _) => await RefreshAdbAsync());
+        AddButton(actionButtons, screenshotButton, "Screenshot", 92, async (_, _) => await CaptureScreenshotAsync());
+        AddButton(actionButtons, rebootQuestButton, "Reboot Meta Quest", 156, async (_, _) => await RunAdbCommandAsync("Reboot Meta Quest", "reboot"));
+        AddButton(actionButtons, debugToolButton, "Oculus Debug Tool", 156, (_, _) => StartDebugTool());
+        AddButton(actionButtons, logToggleButton, "Log", 84, (_, _) => SetLogVisible(!logBox.Visible));
 
         return buttonRow;
+    }
+
+    private Control BuildUnityPanel()
+    {
+        var group = new GroupBox
+        {
+            Text = "Unity",
+            Dock = DockStyle.Fill,
+            Height = 68,
+            Padding = new Padding(8, 8, 8, 8),
+            Margin = new Padding(0, 8, 0, 0),
+        };
+
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            Margin = new Padding(0),
+        };
+        row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        group.Controls.Add(row);
+
+        unityProcessCombo.Dock = DockStyle.Fill;
+        unityProcessCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        unityProcessCombo.DropDownHeight = 160;
+        unityProcessCombo.Margin = new Padding(0, 6, 8, 0);
+        unityProcessCombo.SelectedIndexChanged += (_, _) => killUnityButton.Enabled = unityProcessCombo.SelectedItem is UnityProcessItem;
+        row.Controls.Add(unityProcessCombo, 0, 0);
+
+        AddButton(row, refreshUnityButton, "Refresh", 78, (_, _) => RefreshUnityProcesses());
+        AddButton(row, killUnityButton, "Force Quit", 92, (_, _) => KillSelectedUnityProcess());
+
+        return group;
     }
 
     private static void AddButton(Control parent, Button button, string text, int width, EventHandler click)
@@ -247,6 +320,38 @@ internal sealed class MainForm : Form
         label.Dock = DockStyle.Fill;
         label.Margin = new Padding(column % 2 == 0 ? 0 : 6, 3, column == 1 ? 16 : 0, 3);
         grid.Controls.Add(label, column, row);
+    }
+
+    private static void AddStatusCell(TableLayoutPanel grid, Control control, int row, int column)
+    {
+        control.Dock = DockStyle.Fill;
+        grid.Controls.Add(control, column, row);
+    }
+
+    private Control BuildBatteryBar()
+    {
+        var container = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Margin = new Padding(6, 3, 16, 3),
+        };
+        container.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        container.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        deviceBatteryBar.Dock = DockStyle.Fill;
+        deviceBatteryBar.BackColor = SystemColors.Control;
+        deviceBatteryBar.Height = 18;
+        deviceBatteryBar.Margin = new Padding(0, 1, 8, 1);
+        deviceBatteryBar.Paint += (_, e) => PaintBatteryBar(e.Graphics, deviceBatteryBar.ClientRectangle);
+        container.Controls.Add(deviceBatteryBar, 0, 0);
+
+        deviceBatteryLabel.AutoSize = true;
+        deviceBatteryLabel.Dock = DockStyle.Fill;
+        deviceBatteryLabel.Margin = new Padding(0);
+        container.Controls.Add(deviceBatteryLabel, 1, 0);
+
+        return container;
     }
 
     private ContextMenuStrip BuildTrayMenu()
@@ -301,13 +406,13 @@ internal sealed class MainForm : Form
             adbPath = await Task.Run(() => AdbTools.FindAdbCandidates().FirstOrDefault());
             adbPathText.Text = adbPath ?? "adb not found";
             Log(adbPath is null ? "No adb server or adb.exe found." : $"Using adb: {adbPath}");
-            await RefreshAdbStatusAsync();
+            await RefreshAdbStatusAsync(showChecking: true);
         }
         catch (Exception ex)
         {
             adbPath = null;
             adbPathText.Text = "adb detection failed";
-            SetAdbStatusText("Detection failed", "Unknown", "-", "-", "-");
+            SetAdbStatusText("Detection failed", "Unknown", "-", "-", "-", "-");
             Log($"ADB detection failed: {ex.Message}");
         }
         finally
@@ -358,30 +463,133 @@ internal sealed class MainForm : Form
         disconnectButton.Enabled = enabled;
         rebootQuestButton.Enabled = enabled;
         screenshotButton.Enabled = enabled;
-        devicesButton.Enabled = enabled;
         debugToolButton.Enabled = enabled;
+        logToggleButton.Enabled = enabled;
         launchPcAppButton.Enabled = enabled;
         restartServiceButton.Enabled = enabled;
+        refreshUnityButton.Enabled = enabled;
+        killUnityButton.Enabled = enabled && unityProcessCombo.SelectedItem is UnityProcessItem;
     }
 
-    private async Task RefreshAdbStatusAsync()
+    private void RefreshUnityProcesses()
     {
-        if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
+        var selectedProcessId = (unityProcessCombo.SelectedItem as UnityProcessItem)?.ProcessId;
+        var unityProcesses = Process.GetProcessesByName("Unity")
+            .Select(process =>
+            {
+                try
+                {
+                    return string.IsNullOrWhiteSpace(process.MainWindowTitle)
+                        ? null
+                        : new UnityProcessItem(process.Id, process.MainWindowTitle);
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            })
+            .OfType<UnityProcessItem>()
+            .OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(item => item.ProcessId)
+            .ToArray();
+
+        unityProcessCombo.Items.Clear();
+        unityProcessCombo.Items.AddRange(unityProcesses);
+
+        if (unityProcesses.Length == 0)
         {
-            SetAdbStatusText("adb not found", "No device", "-", "-", "-");
+            unityProcessCombo.Items.Add("No Unity windows found");
+            unityProcessCombo.SelectedIndex = 0;
+            killUnityButton.Enabled = false;
+            return;
+        }
+
+        var selectedIndex = Array.FindIndex(unityProcesses, item => item.ProcessId == selectedProcessId);
+        unityProcessCombo.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        killUnityButton.Enabled = true;
+        Log($"Found {unityProcesses.Length} Unity process(es).");
+    }
+
+    private void KillSelectedUnityProcess()
+    {
+        if (unityProcessCombo.SelectedItem is not UnityProcessItem selected)
+        {
+            Log("No Unity process selected.");
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Force quit Unity?\n\n{selected.Title}\nPID: {selected.ProcessId}",
+            "Force Quit Unity",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (result != DialogResult.Yes)
+        {
             return;
         }
 
         try
         {
-            SetAdbStatusText(TcpTable.TryFindListeningProcessId(5037) is null ? "Starting" : "Running", "Checking...", "-", "-", "-");
-            var status = await AdbTools.QueryConnectionStatusAsync(adbPath);
-            SetAdbStatusText(status.Server, status.Device, status.Model, status.Ip, status.Battery);
+            using var process = Process.GetProcessById(selected.ProcessId);
+            if (!string.Equals(process.ProcessName, "Unity", StringComparison.OrdinalIgnoreCase))
+            {
+                Log($"Selected process is no longer Unity: PID {selected.ProcessId}");
+                RefreshUnityProcesses();
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            Log($"Force quit Unity: {selected.Title} (PID {selected.ProcessId})");
+        }
+        catch (ArgumentException)
+        {
+            Log($"Unity process already exited: PID {selected.ProcessId}");
         }
         catch (Exception ex)
         {
-            SetAdbStatusText("Query failed", "Unknown", "-", "-", "-");
+            Log($"Unity force quit failed: {ex.Message}");
+        }
+        finally
+        {
+            RefreshUnityProcesses();
+        }
+    }
+
+    private async Task RefreshAdbStatusAsync(bool showChecking = false)
+    {
+        if (isRefreshingAdbStatus)
+        {
+            return;
+        }
+
+        isRefreshingAdbStatus = true;
+        if (string.IsNullOrWhiteSpace(adbPath) || !File.Exists(adbPath))
+        {
+            SetAdbStatusText("adb not found", "No device", "-", "-", "-", "-");
+            isRefreshingAdbStatus = false;
+            return;
+        }
+
+        try
+        {
+            if (showChecking)
+            {
+                SetAdbStatusText(TcpTable.TryFindListeningProcessId(5037) is null ? "Starting" : "Running", "Checking...", "-", "-", "-", "-");
+            }
+
+            var status = await AdbTools.QueryConnectionStatusAsync(adbPath);
+            SetAdbStatusText(status.Server, status.Device, status.Model, status.Ip, status.Battery, status.Ssid);
+        }
+        catch (Exception ex)
+        {
+            SetAdbStatusText("Query failed", "Unknown", "-", "-", "-", "-");
             Log($"ADB status refresh failed: {ex.Message}");
+        }
+        finally
+        {
+            isRefreshingAdbStatus = false;
         }
     }
 
@@ -432,11 +640,11 @@ internal sealed class MainForm : Form
         return true;
     }
 
-    private void SetAdbStatusText(string server, string device, string model, string ip, string battery)
+    private void SetAdbStatusText(string server, string device, string model, string ip, string battery, string ssid)
     {
         if (InvokeRequired)
         {
-            BeginInvoke(() => SetAdbStatusText(server, device, model, ip, battery));
+            BeginInvoke(() => SetAdbStatusText(server, device, model, ip, battery, ssid));
             return;
         }
 
@@ -445,6 +653,78 @@ internal sealed class MainForm : Form
         deviceModelLabel.Text = model;
         deviceIpLabel.Text = ip;
         deviceBatteryLabel.Text = battery;
+        deviceSsidLabel.Text = ssid;
+        batteryLevel = ParseBatteryLevel(battery);
+        deviceBatteryBar.Invalidate();
+    }
+
+    private void SetLogVisible(bool visible)
+    {
+        logBox.Visible = visible;
+        logToggleButton.Text = visible ? "Hide Log" : "Log";
+
+        if (logRowStyle is not null)
+        {
+            logRowStyle.SizeType = visible ? SizeType.Percent : SizeType.Absolute;
+            logRowStyle.Height = visible ? 100 : 0;
+        }
+    }
+
+    private void PaintBatteryBar(Graphics graphics, Rectangle bounds)
+    {
+        graphics.Clear(deviceBatteryBar.BackColor);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        var rect = Rectangle.Inflate(bounds, -1, -2);
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            return;
+        }
+
+        using var background = new SolidBrush(Color.FromArgb(225, 245, 229));
+        using var border = new Pen(Color.FromArgb(142, 190, 152));
+        graphics.FillRectangle(background, rect);
+        graphics.DrawRectangle(border, rect);
+
+        if (batteryLevel is null)
+        {
+            return;
+        }
+
+        var level = Math.Clamp(batteryLevel.Value, 0, 100);
+        var fillWidth = Math.Max(1, (int)Math.Round((rect.Width - 2) * (level / 100.0)));
+        var fillRect = new Rectangle(rect.Left + 1, rect.Top + 1, fillWidth, rect.Height - 2);
+        using var fill = new SolidBrush(GetBatteryColor(level));
+        graphics.FillRectangle(fill, fillRect);
+    }
+
+    private static Color GetBatteryColor(int level)
+    {
+        var low = Color.FromArgb(220, 53, 69);
+        var mid = Color.FromArgb(245, 180, 0);
+        var high = Color.FromArgb(40, 167, 69);
+
+        if (level <= 50)
+        {
+            return InterpolateColor(low, mid, level / 50.0);
+        }
+
+        return InterpolateColor(mid, high, (level - 50) / 50.0);
+    }
+
+    private static Color InterpolateColor(Color from, Color to, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return Color.FromArgb(
+            (int)Math.Round(from.R + ((to.R - from.R) * amount)),
+            (int)Math.Round(from.G + ((to.G - from.G) * amount)),
+            (int)Math.Round(from.B + ((to.B - from.B) * amount)));
+    }
+
+    private static int? ParseBatteryLevel(string battery)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(battery, @"(?<level>\d+)%");
+        return match.Success ? int.Parse(match.Groups["level"].Value) : null;
     }
 
     private void StartDebugTool()
@@ -532,5 +812,27 @@ internal sealed class MainForm : Form
         logBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
         logBox.SelectionStart = logBox.TextLength;
         logBox.ScrollToCaret();
+    }
+
+    private sealed record UnityProcessItem(int ProcessId, string Title)
+    {
+        public override string ToString()
+        {
+            return $"{ProcessId} - {Title}";
+        }
+    }
+
+    private sealed class BatteryBarPanel : Panel
+    {
+        public BatteryBarPanel()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.UserPaint,
+                true);
+        }
     }
 }

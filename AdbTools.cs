@@ -55,18 +55,18 @@ internal static class AdbTools
         var devices = await ProcessRunner.RunAsync(adbPath, TimeSpan.FromSeconds(5), "devices", "-l");
         if (devices.ExitCode != 0)
         {
-            return new AdbConnectionStatus(server, "Query failed", "-", "-", "-");
+            return new AdbConnectionStatus(server, "Query failed", "-", "-", "-", "-");
         }
 
         var device = ParseFirstDevice(devices.Output);
         if (device is null)
         {
-            return new AdbConnectionStatus(server, "No device", "-", "-", "-");
+            return new AdbConnectionStatus(server, "No device", "-", "-", "-", "-");
         }
 
         if (!device.State.Equals("device", StringComparison.OrdinalIgnoreCase))
         {
-            return new AdbConnectionStatus(server, $"{device.Serial} ({device.State})", device.Model ?? "-", "-", "-");
+            return new AdbConnectionStatus(server, $"{device.Serial} ({device.State})", device.Model ?? "-", "-", "-", "-");
         }
 
         var model = await QueryShellValueAsync(adbPath, "getprop", "ro.product.model");
@@ -78,11 +78,12 @@ internal static class AdbTools
         var androidVersion = await QueryShellValueAsync(adbPath, "getprop", "ro.build.version.release");
         var ip = await QueryDeviceIpAsync(adbPath);
         var battery = await QueryBatteryAsync(adbPath);
+        var ssid = await QueryWifiSsidAsync(adbPath);
         var modelText = string.IsNullOrWhiteSpace(androidVersion)
             ? model ?? "-"
             : $"{model ?? "-"} / Android {androidVersion}";
 
-        return new AdbConnectionStatus(server, $"{device.Serial} (connected)", modelText, ip, battery);
+        return new AdbConnectionStatus(server, $"{device.Serial} (connected)", modelText, ip, battery, ssid);
     }
 
     public static async Task<bool> EnsureServerRunningAsync(string adbPath)
@@ -237,6 +238,67 @@ internal static class AdbTools
         return string.IsNullOrWhiteSpace(statusText) ? $"{level}%" : $"{level}% ({statusText})";
     }
 
+    private static async Task<string> QueryWifiSsidAsync(string adbPath)
+    {
+        var status = await QueryShellValueAsync(adbPath, "cmd", "wifi", "status");
+        var ssid = ParseWifiSsid(status);
+        if (!string.IsNullOrWhiteSpace(ssid))
+        {
+            return ssid;
+        }
+
+        var dumpsys = await QueryShellValueAsync(adbPath, "dumpsys", "wifi");
+        ssid = ParseWifiSsid(dumpsys);
+        return string.IsNullOrWhiteSpace(ssid) ? "-" : ssid;
+    }
+
+    private static string? ParseWifiSsid(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        foreach (var pattern in new[]
+        {
+            @"\bSSID:\s*(?<ssid>""[^""]+""|<[^>]+>|[^,\r\n]+)",
+            @"\bssid\s*=\s*(?<ssid>""[^""]+""|<[^>]+>|[^,\r\n]+)",
+        })
+        {
+            var match = Regex.Match(output, pattern, RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var ssid = CleanWifiSsid(match.Groups["ssid"].Value);
+            if (!string.IsNullOrWhiteSpace(ssid))
+            {
+                return ssid;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? CleanWifiSsid(string value)
+    {
+        var ssid = value.Trim().TrimEnd(',');
+        if (ssid.Length >= 2 && ssid[0] == '"' && ssid[^1] == '"')
+        {
+            ssid = ssid[1..^1];
+        }
+
+        if (ssid.Equals("<unknown ssid>", StringComparison.OrdinalIgnoreCase)
+            || ssid.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            || ssid.Equals("null", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(ssid) ? null : ssid;
+    }
+
     private static string? ParseDumpsysValue(string output, string key)
     {
         foreach (var line in TextOutput.SplitLines(output))
@@ -306,6 +368,6 @@ internal static class AdbTools
     }
 }
 
-internal sealed record AdbConnectionStatus(string Server, string Device, string Model, string Ip, string Battery);
+internal sealed record AdbConnectionStatus(string Server, string Device, string Model, string Ip, string Battery, string Ssid);
 
 internal sealed record AdbDevice(string Serial, string State, string? Model);
