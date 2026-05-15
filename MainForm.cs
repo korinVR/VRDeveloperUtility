@@ -33,7 +33,7 @@ internal sealed class MainForm : Form
         Text = "VR Developer Utility";
         Width = 860;
         Height = 560;
-        MinimumSize = new Size(720, 460);
+        MinimumSize = new Size(760, 500);
         StartPosition = FormStartPosition.CenterScreen;
 
         var root = new TableLayoutPanel
@@ -101,7 +101,7 @@ internal sealed class MainForm : Form
         {
             Text = "ADB Connection",
             Dock = DockStyle.Top,
-            Height = 96,
+            Height = 112,
             Padding = new Padding(8, 4, 8, 8),
             Margin = new Padding(0, 0, 0, 8),
         };
@@ -133,7 +133,7 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Height = 116,
+            Height = 126,
             Margin = new Padding(0, 10, 0, 0),
         };
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -178,7 +178,7 @@ internal sealed class MainForm : Form
             "-c",
             "android.intent.category.LAUNCHER",
             "1"));
-        AddButton(pcAppButtons, disconnectButton, "Disconnect", 88, async (_, _) => await RunAdbCommandAsync(
+        AddButton(pcAppButtons, disconnectButton, "Disconnect", 104, async (_, _) => await RunAdbCommandAsync(
             "Disconnect",
             "shell",
             "am",
@@ -197,8 +197,8 @@ internal sealed class MainForm : Form
         AddButton(mainButtons, refreshButton, "Refresh", 78, async (_, _) => await RefreshAdbAsync());
         AddButton(mainButtons, devicesButton, "Devices", 78, async (_, _) => await RunAdbCommandAsync("Devices", "devices"));
         AddButton(mainButtons, screenshotButton, "Screenshot", 92, async (_, _) => await CaptureScreenshotAsync());
-        AddButton(mainButtons, rebootQuestButton, "Reboot Meta Quest", 128, async (_, _) => await RunAdbCommandAsync("Reboot Meta Quest", "reboot"));
-        AddButton(toolButtons, debugToolButton, "Oculus Debug Tool", 132, (_, _) => StartDebugTool());
+        AddButton(mainButtons, rebootQuestButton, "Reboot Meta Quest", 156, async (_, _) => await RunAdbCommandAsync("Reboot Meta Quest", "reboot"));
+        AddButton(toolButtons, debugToolButton, "Oculus Debug Tool", 156, (_, _) => StartDebugTool());
 
         return buttonRow;
     }

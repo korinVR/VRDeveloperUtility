@@ -2,7 +2,7 @@
   <Package
     Name="VR Developer Utility"
     Manufacturer="FrameSynthesis"
-    Version="1.0.1"
+    Version="1.0.2"
     Scope="perUser"
     UpgradeCode="{8B04E5D8-CF7F-462C-AEC3-33D12F4D16C0}">
 
